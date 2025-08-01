@@ -104,8 +104,8 @@ local function NoChat_ObfuscateHandler(self, event, msg, sender, ...)
 
     local label = chatTypeLabels[event] or "Chat"
     local placeholder = string.format(
-        "|HrevealMsg:%d|h|cff888888[%s from %s hidden. |cff00ff00Click to reveal|r|cff888888]|r|h",
-        messageCounter, label, sender
+        "|HrevealMsg:%d|h|cff888888[%s from |Hplayer:%s|h%s|h hidden. |cff00ff00Click to reveal|r|cff888888]|r|h",
+        messageCounter, label, sender, sender
     )
 
     DEFAULT_CHAT_FRAME:AddMessage(placeholder)
@@ -123,7 +123,7 @@ SetItemRef = function(link, text, button, chatFrame)
         local data = hiddenMessages[tonumber(id)]
         if data then
             local label = chatTypeLabels[data.chatType] or "Chat"
-            local revealed = string.format("|cffffff00[%s] %s: %s|r", label, data.sender, data.message)
+            local revealed = string.format("|cffffff00[%s] |Hplayer:%s|h%s|h: %s|r", label, data.sender, data.sender, data.message)
             chatFrame:AddMessage(revealed)
         end
     else
