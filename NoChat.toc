@@ -1,0 +1,4 @@
+## Interface: 50400
+## Title: NoChat
+## Notes: Blocks all chat input/output
+NoChat.lua
