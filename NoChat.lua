@@ -1,42 +1,68 @@
--- Print loaded confirmation
 print("|cff00ff00[NoChat] Loaded.|r")
 
--- Disable outgoing chat (except BN_WHISPER)
-local function disableChat()
-    _G["ChatFrame_SendTell"] = function() end
+local allowedOutgoing = {
+    BN_WHISPER = true,
+    BN_CONVERSATION = true,
+    GUILD = true,
+    OFFICER = true
+}
 
-    local orig_SendChatMessage = SendChatMessage
-    _G["SendChatMessage"] = function(msg, chatType, language, channel, ...)
-        if chatType and chatType:upper() ~= "BN_WHISPER" then
-            print("|cffff0000[NoChat]|r Chat message blocked: " .. (chatType or "unknown"))
-            return
-        end
+local allowedIncoming = {
+    CHAT_MSG_BN_WHISPER = true,
+    CHAT_MSG_BN_CONVERSATION = true,
+    CHAT_MSG_GUILD = true,
+    CHAT_MSG_OFFICER = true
+}
+
+local orig_SendChatMessage = SendChatMessage
+SendChatMessage = function(msg, chatType, language, channel, ...)
+    chatType = chatType and chatType:upper() or ""
+
+    if allowedOutgoing[chatType] then
         return orig_SendChatMessage(msg, chatType, language, channel, ...)
     end
+
+    local blockedTypes = {
+        SAY = true, YELL = true, PARTY = true, RAID = true,
+        INSTANCE_CHAT = true, WHISPER = true, CHANNEL = true, EMOTE = true
+    }
+
+    if blockedTypes[chatType] then
+        print("|cffff0000[NoChat]|r Outgoing chat blocked.")
+        return
+    end
+
+    return orig_SendChatMessage(msg, chatType, language, channel, ...)
 end
 
-disableChat()
+ChatFrame_SendTell = function() end
 
--- Block manual chat (except slash commands and BN_WHISPER)
-local origChatEdit_OnEnterPressed = ChatEdit_OnEnterPressed
-function ChatEdit_OnEnterPressed(editBox)
-    local chatType = editBox:GetAttribute("chatType")
+local orig_ChatEdit_OnEnterPressed = ChatEdit_OnEnterPressed
+ChatEdit_OnEnterPressed = function(editBox)
     local text = editBox:GetText()
+    local chatType = editBox:GetAttribute("chatType")
+    chatType = chatType and chatType:upper() or ""
 
-    if text and text ~= "" and not text:match("^/") and chatType ~= "BN_WHISPER" then
-        print("|cffff0000[NoChat]|r Your message was blocked and not sent.")
+    if text:match("^/") or allowedOutgoing[chatType] then
+        return orig_ChatEdit_OnEnterPressed(editBox)
+    end
+
+    local blockedTypes = {
+        SAY = true, YELL = true, PARTY = true, RAID = true,
+        INSTANCE_CHAT = true, WHISPER = true, CHANNEL = true, EMOTE = true
+    }
+
+    if blockedTypes[chatType] then
+        print("|cffff0000[NoChat]|r Message blocked (manual input).")
         editBox:SetText("")
         editBox:ClearFocus()
         return
     end
 
-    origChatEdit_OnEnterPressed(editBox)
+    return orig_ChatEdit_OnEnterPressed(editBox)
 end
 
--- Incoming message storage (only for hidden messages)
-local hiddenMessages = {}
-local messageCounter = 0
-
+local hiddenMessages, messageCounter = {}, 0
 local chatTypeLabels = {
     CHAT_MSG_WHISPER = "Whisper",
     CHAT_MSG_SAY = "Say",
@@ -46,65 +72,62 @@ local chatTypeLabels = {
     CHAT_MSG_RAID = "Raid",
     CHAT_MSG_RAID_LEADER = "Raid Leader",
     CHAT_MSG_RAID_WARNING = "Raid Warning",
-    CHAT_MSG_GUILD = "Guild",
-    CHAT_MSG_OFFICER = "Officer",
     CHAT_MSG_INSTANCE_CHAT = "Instance",
     CHAT_MSG_INSTANCE_CHAT_LEADER = "Instance Leader",
-    CHAT_MSG_CHANNEL = "Channel",
-    CHAT_MSG_BN_WHISPER = "BN Whisper"
+    CHAT_MSG_CHANNEL = "Channel"
 }
 
--- Only intercept messages we want to hide (everything but GUILD & BN_WHISPER)
-local eventsToHide = {
+local eventsToIntercept = {}
+for _, evt in ipairs({
     "CHAT_MSG_WHISPER", "CHAT_MSG_SAY", "CHAT_MSG_YELL",
-    "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID",
-    "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING", "CHAT_MSG_OFFICER",
-    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_CHANNEL"
-}
-
-local f = CreateFrame("Frame")
-for _, evt in ipairs(eventsToHide) do
-    f:RegisterEvent(evt)
+    "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
+    "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING",
+    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
+    "CHAT_MSG_CHANNEL", "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER"
+}) do
+    if not allowedIncoming[evt] then
+        table.insert(eventsToIntercept, evt)
+    end
 end
 
-f:SetScript("OnEvent", function(self, event, msg, sender)
+-- Chat Filter (suppresses default output)
+local function NoChat_Filter(self, event, msg, sender, ...)
     messageCounter = messageCounter + 1
     hiddenMessages[messageCounter] = {
         sender = sender,
         message = msg,
         chatType = event
     }
-end)
 
--- Reveal handler (in case we later expose these)
-local origSetItemRef = SetItemRef
-function SetItemRef(link, text, button, chatFrame)
+    if event == "CHAT_MSG_WHISPER" then
+        PlaySound(3081, "Master")
+    end
+
+    local label = chatTypeLabels[event] or "Chat"
+    local placeholder = string.format(
+        "|HrevealMsg:%d|h|cff9999ff[New %s message received. |cff00ff00Click to reveal|r|cff9999ff]|r|h",
+        messageCounter, label
+    )
+
+    DEFAULT_CHAT_FRAME:AddMessage(placeholder)
+    return true -- Suppress original message
+end
+
+for _, event in ipairs(eventsToIntercept) do
+    ChatFrame_AddMessageEventFilter(event, NoChat_Filter)
+end
+
+local orig_SetItemRef = SetItemRef
+SetItemRef = function(link, text, button, chatFrame)
     local id = link:match("^revealMsg:(%d+)$")
     if id then
-        id = tonumber(id)
-        local data = hiddenMessages[id]
+        local data = hiddenMessages[tonumber(id)]
         if data then
-            local color = "|cffffff00"
             local label = chatTypeLabels[data.chatType] or "Chat"
-            local revealed = string.format("%s[%s] %s: %s|r", color, label, data.sender, data.message)
+            local revealed = string.format("|cffffff00[%s] %s: %s|r", label, data.sender, data.message)
             DEFAULT_CHAT_FRAME:AddMessage(revealed)
         end
     else
-        origSetItemRef(link, text, button, chatFrame)
+        orig_SetItemRef(link, text, button, chatFrame)
     end
 end
-
--- Unregister blocked events from default chat frames
-for _, eventName in ipairs(eventsToHide) do
-    for i = 1, NUM_CHAT_WINDOWS do
-        local frame = _G["ChatFrame"..i]
-        if frame then
-            frame:UnregisterEvent(eventName)
-        end
-    end
-end
-
--- Allow outgoing Real ID whispers
-hooksecurefunc("BNSendWhisper", function(toonID, message)
-    -- Allowed
-end)
