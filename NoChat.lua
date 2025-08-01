@@ -90,8 +90,7 @@ for _, evt in ipairs({
     end
 end
 
--- Chat Filter (suppresses default output)
-local function NoChat_Filter(self, event, msg, sender, ...)
+local function NoChat_ObfuscateHandler(self, event, msg, sender, ...)
     messageCounter = messageCounter + 1
     hiddenMessages[messageCounter] = {
         sender = sender,
@@ -99,22 +98,22 @@ local function NoChat_Filter(self, event, msg, sender, ...)
         chatType = event
     }
 
-    if event == "CHAT_MSG_WHISPER" then
+    if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_SAY" then
         PlaySound(3081, "Master")
     end
 
     local label = chatTypeLabels[event] or "Chat"
     local placeholder = string.format(
-        "|HrevealMsg:%d|h|cff9999ff[New %s message received. |cff00ff00Click to reveal|r|cff9999ff]|r|h",
-        messageCounter, label
+        "|HrevealMsg:%d|h|cff888888[%s from %s hidden. |cff00ff00Click to reveal|r|cff888888]|r|h",
+        messageCounter, label, sender
     )
 
     DEFAULT_CHAT_FRAME:AddMessage(placeholder)
-    return true -- Suppress original message
+    return true
 end
 
 for _, event in ipairs(eventsToIntercept) do
-    ChatFrame_AddMessageEventFilter(event, NoChat_Filter)
+    ChatFrame_AddMessageEventFilter(event, NoChat_ObfuscateHandler)
 end
 
 local orig_SetItemRef = SetItemRef
@@ -125,7 +124,7 @@ SetItemRef = function(link, text, button, chatFrame)
         if data then
             local label = chatTypeLabels[data.chatType] or "Chat"
             local revealed = string.format("|cffffff00[%s] %s: %s|r", label, data.sender, data.message)
-            DEFAULT_CHAT_FRAME:AddMessage(revealed)
+            chatFrame:AddMessage(revealed)
         end
     else
         orig_SetItemRef(link, text, button, chatFrame)
