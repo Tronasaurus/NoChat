@@ -127,6 +127,7 @@ SetItemRef = function(link, text, button, chatFrame)
             chatFrame:AddMessage(revealed)
         end
     else
-        orig_SetItemRef(link, text, button, chatFrame)
+        -- Pass all other links (like Hplayer: and others) to Blizzard’s original handler
+        return orig_SetItemRef(link, text, button, chatFrame)
     end
 end
