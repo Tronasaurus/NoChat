@@ -9,7 +9,6 @@ An addon to enforce self-muting for those of us that can't seem to shut the fuck
 
 
 ### Known issues:
-- Doesn't allow for easy player reporting from chat if you do receive an unwanted message.
 - Some spam from global channels such as General, Trade and LFG. (Note: Just leave them if you're using this addon, you won't be able to use them anyway.)
 
 ### Installation:
